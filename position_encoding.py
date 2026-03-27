@@ -1,58 +1,124 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import math
+"""
+position_encoding.py – TensorFlow-native positional encodings.
 
+PE  : standard sinusoidal encoding (Vaswani et al., 2017)
+GRE : Gaussian Range Encoding (Li et al., 2021 – THAT model),
+      re-implemented natively in TF so parameters are trained end-to-end.
+
+Bug-fix vs original: the original GRE subclassed nn.Module (PyTorch) and
+returned `.detach().numpy()`, meaning the Gaussian means/sigma/embedding
+were never updated during TF training. This version is a Keras Layer with
+proper add_weight() so those parameters receive gradients.
+"""
+
+import math
+import numpy as np
+import tensorflow as tf
 from tensorflow.keras import layers
 
-class PE(layers.Layer):
-    def __init__(self, d_model, max_seq_length=500, dropout=0.1):
-        super().__init__()
-        
-        self.d_model = d_model
-        self.dropout = layers.Dropout(dropout)
-        
-        pe = np.zeros((max_seq_length, d_model),dtype=float)
 
+class PE(layers.Layer):
+    """Standard sinusoidal positional encoding."""
+
+    def __init__(self, d_model, max_seq_length=500, dropout=0.1, **kwargs):
+        super().__init__(**kwargs)
+        self.d_model = d_model
+        self.dropout_layer = layers.Dropout(dropout)
+
+        pe = np.zeros((max_seq_length, d_model), dtype=np.float32)
         for pos in range(max_seq_length):
             for i in range(0, d_model, 2):
-                pe[pos, i] = math.sin(pos/(10000**(2*i/d_model)))
-                pe[pos, i+1] = math.cos(pos/(10000**((2*i+1)/d_model)))
-        pe = pe.reshape(1,pe.shape[0],pe.shape[1])      
-        self.pe = pe
-    
-    def call(self, x):
-        x = x*math.sqrt(self.d_model)
-        seq_length = x.shape[1] # x.size(1)
-        
-        pe = self.pe[:, :seq_length] 
-        x = x + pe
-        x = self.dropout(x)
-        return x
+                pe[pos, i] = math.sin(pos / (10000 ** (2 * i / d_model)))
+                if i + 1 < d_model:
+                    pe[pos, i + 1] = math.cos(
+                        pos / (10000 ** ((2 * i + 1) / d_model))
+                    )
+        self.pe = tf.constant(pe.reshape(1, max_seq_length, d_model))
 
-def normal_pdf(pos, mu, sigma):
-    a = pos - mu
-    log_p = -1*torch.mul(a, a)/(2*sigma) - torch.log(sigma)/2
-    return F.softmax(log_p, dim=1)
+    def call(self, x, training=False):
+        x = x * math.sqrt(self.d_model)
+        seq_length = tf.shape(x)[1]
+        x = x + self.pe[:, :seq_length]
+        return self.dropout_layer(x, training=training)
 
-# Gaussian Position Endcoding (from THAT model) 
-class GRE(nn.Module):
-    def __init__(self, d_model, total_size, K=10):
-        super(GRE, self).__init__()
-        self.embedding = nn.Parameter(torch.zeros([K, d_model], dtype=torch.float), requires_grad=True)
-        nn.init.xavier_uniform_(self.embedding, gain=1)
-        self.positions = torch.tensor([i for i in range(total_size)], requires_grad=False).unsqueeze(1).repeat(1, K)
-        s = 0.0
+    def get_config(self):
+        cfg = super().get_config()
+        cfg.update({"d_model": self.d_model})
+        return cfg
+
+
+class GRE(layers.Layer):
+    """Gaussian Range Encoding – TF-native re-implementation.
+
+    Each position is encoded as a weighted sum of K learnable embeddings,
+    where the weights are given by softmax over K Gaussian basis functions.
+
+    Matches the original formulation from Li et al. (2021):
+        log_p = -a² / (2·σ) - log(σ) / 2,   a = position - μ
+        M = softmax(log_p, axis=K)
+        pos_enc = M @ embedding              shape: (total_size, d_model)
+    """
+
+    def __init__(self, d_model: int, total_size: int, K: int = 10, **kwargs):
+        super().__init__(**kwargs)
+        self.d_model = d_model
+        self.total_size = total_size
+        self.K = K
+
+        # Fixed positions matrix: shape (total_size, K),
+        # each row is [pos, pos, ..., pos] replicated K times.
+        positions = np.tile(
+            np.arange(total_size, dtype=np.float32).reshape(-1, 1),
+            (1, K),
+        )
+        self.positions = tf.constant(positions)  # not a learnable weight
+
+        # Evenly spaced initial Gaussian means
         interval = total_size / K
-        mu = []
-        for _ in range(K):
-            mu.append(nn.Parameter(torch.tensor(s, dtype=torch.float), requires_grad=True))
-            s = s + interval
-        self.mu = nn.Parameter(torch.tensor(mu, dtype=torch.float).unsqueeze(0), requires_grad=True)
-        self.sigma = nn.Parameter(torch.tensor([torch.tensor([50.0], dtype=torch.float, requires_grad=True) for _ in range(K)]).unsqueeze(0))
+        self._mu_init = np.array(
+            [i * interval for i in range(K)], dtype=np.float32
+        ).reshape(1, K)
 
-    def forward(self, x):
-        M = normal_pdf(self.positions, self.mu, self.sigma)
-        pos_enc = torch.matmul(M, self.embedding)
-        temp = pos_enc.unsqueeze(0)
-        return x + temp.detach().numpy()
+    def build(self, input_shape):
+        self.embedding = self.add_weight(
+            name="gre_embedding",
+            shape=(self.K, self.d_model),
+            initializer="glorot_uniform",
+            trainable=True,
+        )
+        self.mu = self.add_weight(
+            name="gre_mu",
+            shape=(1, self.K),
+            initializer=tf.keras.initializers.Constant(self._mu_init),
+            trainable=True,
+        )
+        self.sigma = self.add_weight(
+            name="gre_sigma",
+            shape=(1, self.K),
+            initializer=tf.keras.initializers.Constant(
+                np.full((1, self.K), 50.0, dtype=np.float32)
+            ),
+            trainable=True,
+        )
+        super().build(input_shape)
+
+    def call(self, x):
+        # a: (total_size, K)
+        a = self.positions - self.mu
+        # Unnormalised log-Gaussian (matches original PyTorch formulation)
+        log_p = (
+            -tf.square(a) / (2.0 * self.sigma + 1e-8)
+            - tf.math.log(tf.abs(self.sigma) + 1e-8) / 2.0
+        )
+        # Softmax over K: each position gets a convex combination of embeddings
+        M = tf.nn.softmax(log_p, axis=1)          # (total_size, K)
+        pos_enc = tf.matmul(M, self.embedding)    # (total_size, d_model)
+        pos_enc = tf.expand_dims(pos_enc, 0)      # (1, total_size, d_model)
+        return x + pos_enc
+
+    def get_config(self):
+        cfg = super().get_config()
+        cfg.update(
+            {"d_model": self.d_model, "total_size": self.total_size, "K": self.K}
+        )
+        return cfg
