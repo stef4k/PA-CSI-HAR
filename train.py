@@ -373,9 +373,6 @@ def train_fold(
             save_weights_only=True,
             verbose=0,
         ),
-        keras.callbacks.ReduceLROnPlateau(
-            monitor="val_loss", factor=0.5, patience=10, verbose=1,
-        ),
     ]
 
     train_start = time.perf_counter()
