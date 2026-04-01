@@ -29,7 +29,9 @@ if [[ -z "${SLURM_JOB_ID:-}" ]]; then
 
     echo "Submitting individual training jobs..."
 
-    sbatch --export=DATASET=mine "${SCRIPT}"
+    for FOLD in 1 2 3 4 5; do
+        sbatch --export=DATASET=mine,FOLD=${FOLD} "${SCRIPT}"
+    done
 
     if [[ -f "${STANWIFI_DIR}/data_amp_2000.npy" ]]; then
         sbatch --export=DATASET=stanwifi "${SCRIPT}"
@@ -87,14 +89,15 @@ case "${DATASET:-}" in
     mine)
         echo ""
         echo "=============================="
-        echo "  Training: MINE lab (5-fold)"
+        echo "  Training: MINE lab (fold ${FOLD:-all})"
         echo "=============================="
         "${PYTHON}" train.py \
             --dataset     mine \
             --data_dir    "${WORKDIR}/datasets/" \
             --seed        42 \
             --results_dir "${RESULTS_DIR}" \
-            --gpu         0
+            --gpu         0 \
+            ${FOLD:+--fold ${FOLD}}
         ;;
 
     stanwifi)
@@ -107,7 +110,8 @@ case "${DATASET:-}" in
             --data_dir    "${STANWIFI_DIR}/" \
             --seed        42 \
             --results_dir "${RESULTS_DIR}" \
-            --gpu         0
+            --gpu         0 \
+            --batch_size  32
         ;;
 
     multienv)

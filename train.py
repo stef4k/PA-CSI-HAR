@@ -466,6 +466,10 @@ def parse_args():
         "--gpu", default="0",
         help="GPU index to use (set to '' to use CPU)",
     )
+    p.add_argument(
+        "--fold", type=int, default=None,
+        help="Run only this fold (1-indexed). Omit to run all folds.",
+    )
     return p.parse_args()
 
 
@@ -515,6 +519,8 @@ def main():
         all_conf   = None
 
         for fold, (train_idx, val_idx) in enumerate(kf.split(x_amp, labels)):
+            if args.fold is not None and fold + 1 != args.fold:
+                continue
             print(f"\n{'='*60}")
             print(f"  FOLD {fold+1}/{n_folds}")
             print(f"{'='*60}")
@@ -541,11 +547,12 @@ def main():
                     f, indent=2,
                 )
 
-        # Save averaged-fold confusion matrix
-        np.save(
-            os.path.join(args.results_dir, f"confusion_{tag}_all_folds.npy"),
-            all_conf,
-        )
+        # Save averaged-fold confusion matrix (only when all folds were run)
+        if args.fold is None:
+            np.save(
+                os.path.join(args.results_dir, f"confusion_{tag}_all_folds.npy"),
+                all_conf,
+            )
 
         # Print fold summary
         print("\n" + "="*60)
