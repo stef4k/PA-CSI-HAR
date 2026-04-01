@@ -39,6 +39,7 @@ import tensorflow as tf
 import keras
 from tensorflow.keras import optimizers
 from sklearn.model_selection import train_test_split, StratifiedKFold
+from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import (
     precision_score,
     recall_score,
@@ -345,7 +346,7 @@ def append_csv(path, row: dict):
 def train_fold(
     cfg, x_amp_train, x_phase_train, y_train,
     x_amp_val, x_phase_val, y_val,
-    checkpoint_path, args, fold=0,
+    checkpoint_path, args, fold=0, class_weight=None,
 ):
     """Build, compile, train, and evaluate model for one fold."""
     # Set seed for reproducibility
@@ -382,6 +383,7 @@ def train_fold(
         batch_size=cfg["batch_size"],
         epochs=cfg["epochs"],
         callbacks=callbacks,
+        class_weight=class_weight,
         verbose=1,
     )
     training_time = time.perf_counter() - train_start
@@ -470,6 +472,10 @@ def parse_args():
         "--fold", type=int, default=None,
         help="Run only this fold (1-indexed). Omit to run all folds.",
     )
+    p.add_argument(
+        "--class_weight", action="store_true", default=False,
+        help="Balance loss by inverse class frequency (sklearn balanced weighting).",
+    )
     return p.parse_args()
 
 
@@ -508,6 +514,16 @@ def main():
     init_csv(csv_path)
 
     tag = f"{args.dataset}_{getattr(args, 'env', '')}_{args.seed}"
+    if args.class_weight:
+        tag += "_cw"
+
+    # Class weights (balanced inverse-frequency weighting)
+    cw_dict = None
+    if args.class_weight:
+        classes = np.unique(labels)
+        weights = compute_class_weight("balanced", classes=classes, y=labels)
+        cw_dict = dict(zip(classes.tolist(), weights.tolist()))
+        print(f"[class_weight] {cw_dict}")
 
     # ── Training strategy ──────────────────────────────────────────────────
     if cfg["split"] == "kfold":
@@ -530,7 +546,7 @@ def main():
                 cfg,
                 x_amp[train_idx], x_phase[train_idx], labels[train_idx],
                 x_amp[val_idx],   x_phase[val_idx],   labels[val_idx],
-                ckpt, args, fold=fold + 1,
+                ckpt, args, fold=fold + 1, class_weight=cw_dict,
             )
             fold_rows.append(row)
             all_conf = conf if all_conf is None else all_conf + conf
@@ -581,7 +597,7 @@ def main():
             cfg,
             x_amp_train, x_phase_train, y_train,
             x_amp_val,   x_phase_val,   y_val,
-            ckpt, args, fold=0,
+            ckpt, args, fold=0, class_weight=cw_dict,
         )
         append_csv(csv_path, row)
 

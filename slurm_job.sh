@@ -118,7 +118,7 @@ case "${DATASET:-}" in
         ENV="${ENV:-E1}"
         echo ""
         echo "=============================="
-        echo "  Training: MultiEnv ${ENV}"
+        echo "  Training: MultiEnv ${ENV}${CLASS_WEIGHT:+ (class_weight)}"
         echo "=============================="
         "${PYTHON}" train.py \
             --dataset     multienv \
@@ -126,7 +126,8 @@ case "${DATASET:-}" in
             --env         "${ENV}" \
             --seed        42 \
             --results_dir "${RESULTS_DIR}" \
-            --gpu         0
+            --gpu         0 \
+            ${CLASS_WEIGHT:+--class_weight}
         ;;
 
     *)
