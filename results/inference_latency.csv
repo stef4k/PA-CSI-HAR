@@ -1,0 +1,10 @@
+timestamp_utc,run_id,dataset,env,fold,checkpoint_path,batch_size,total_parameters,inference_forward_time_s,inference_latency_ms_per_sample,inference_throughput_samples_per_s
+2026-04-03T09:02:11.788897,stanwifi_E1,stanwifi,E1,,/gpfs/workdir/balazsk/PA-CSI-HAR/checkpoints/stanwifi_E1_42/best.h5,1,1566362,0.4212381978193298,421.2381978193298,2.373953751527782
+2026-04-03T09:02:41.533099,multienv_E1_cw,multienv,E1,,/gpfs/workdir/balazsk/PA-CSI-HAR/checkpoints/multienv_E1_42_cw/best.h5,1,1566362,0.301885688053444,301.885688053444,3.3125121182391597
+2026-04-03T09:03:10.966071,multienv_E2_cw,multienv,E2,,/gpfs/workdir/balazsk/PA-CSI-HAR/checkpoints/multienv_E2_42_cw/best.h5,1,1566362,0.3034929048316553,303.4929048316553,3.2949699451942402
+2026-04-03T09:03:41.023383,multienv_E3_cw,multienv,E3,,/gpfs/workdir/balazsk/PA-CSI-HAR/checkpoints/multienv_E3_42_cw/best.h5,1,1566362,0.30703140104655174,307.03140104655176,3.2569958531648076
+2026-04-03T09:04:29.833244,mine_fold1,mine,E1,1,/gpfs/workdir/balazsk/PA-CSI-HAR/checkpoints/mine_E1_42_fold1/best.h5,1,5562722,0.4509747038502246,450.9747038502246,2.217419273104318
+2026-04-03T09:05:18.295530,mine_fold2,mine,E1,2,/gpfs/workdir/balazsk/PA-CSI-HAR/checkpoints/mine_E1_42_fold2/best.h5,1,5562722,0.4527826291695237,452.7826291695237,2.208565292873892
+2026-04-03T09:06:07.005809,mine_fold3,mine,E1,3,/gpfs/workdir/balazsk/PA-CSI-HAR/checkpoints/mine_E1_42_fold3/best.h5,1,5562722,0.45496465609408915,454.96465609408915,2.197972933952906
+2026-04-03T09:06:55.313385,mine_fold4,mine,E1,4,/gpfs/workdir/balazsk/PA-CSI-HAR/checkpoints/mine_E1_42_fold4/best.h5,1,5562722,0.44840136118698865,448.40136118698865,2.2301448803653123
+2026-04-03T09:07:43.952851,mine_fold5,mine,E1,5,/gpfs/workdir/balazsk/PA-CSI-HAR/checkpoints/mine_E1_42_fold5/best.h5,1,5562722,0.45016022060997785,450.16022060997784,2.2214312909412035
